@@ -992,29 +992,12 @@ class SlabGenerator:
                 energy = prim.volume / slab.volume * energy
             slab = prim
 
-        # Reorient the lattice to get the correct reduced cell
-        ouc = self.oriented_unit_cell.copy()
-        if self.primitive:
-            # find a reduced ouc
-            slab_l = slab.lattice
-            ouc = ouc.get_primitive_structure(
-                constrain_latt={
-                    "a": slab_l.a,
-                    "b": slab_l.b,
-                    "alpha": slab_l.alpha,
-                    "beta": slab_l.beta,
-                    "gamma": slab_l.gamma,
-                }
-            )
-            # Check this is the correct oriented unit cell
-            ouc = self.oriented_unit_cell if slab_l.a != ouc.lattice.a or slab_l.b != ouc.lattice.b else ouc
-
         return Slab(
             slab.lattice,
             slab.species_and_occu,
             slab.frac_coords,
             self.miller_index,
-            ouc,
+            self.oriented_unit_cell,
             shift,
             scale_factor,
             energy=energy,
@@ -1166,6 +1149,25 @@ class SlabGenerator:
 
         match = StructureMatcher(ltol=tol, stol=tol, primitive_cell=False, scale=False)
         new_slabs = [g[0] for g in match.group_structures(new_slabs)]
+
+        # Reorient the lattice to get the correct reduced cell
+        ouc = self.oriented_unit_cell.copy()
+        if self.primitive:
+            # find a reduced ouc
+            slab_l = new_slabs[0].lattice
+            ouc = ouc.get_primitive_structure(
+                constrain_latt={
+                    "a": slab_l.a,
+                    "b": slab_l.b,
+                    "alpha": slab_l.alpha,
+                    "beta": slab_l.beta,
+                    "gamma": slab_l.gamma,
+                }
+            )
+            # Check this is the correct oriented unit cell
+            ouc = self.oriented_unit_cell if slab_l.a != ouc.lattice.a or slab_l.b != ouc.lattice.b else ouc
+            for i, slab in enumerate(new_slabs):
+                new_slabs[i] = slab.oriented_unit_cell = ouc
 
         return sorted(new_slabs, key=lambda s: s.energy)
 
