@@ -766,19 +766,10 @@ class SlabGenerator:
 
     """
 
-    def __init__(
-        self,
-        initial_structure,
-        miller_index,
-        min_slab_size,
-        min_vacuum_size,
-        lll_reduce=False,
-        center_slab=False,
-        in_unit_planes=False,
-        primitive=True,
-        max_normal_search=None,
-        reorient_lattice=True,
-    ):
+    def __init__(self, initial_structure, miller_index, min_slab_size,
+                 min_vacuum_size, lll_reduce=False, center_slab=False,
+                 in_unit_planes=False, primitive=True, max_normal_search=None,
+                 reorient_lattice=True):
         """
         Calculates the slab scale factor and uses it to generate a unit cell
         of the initial structure that has been oriented by its miller index.
@@ -834,8 +825,10 @@ class SlabGenerator:
         # Add Wyckoff symbols of the bulk, will help with
         # identfying types of sites in the slab system
         sg = SpacegroupAnalyzer(initial_structure)
-        initial_structure.add_site_property("bulk_wyckoff", sg.get_symmetry_dataset()["wyckoffs"])
-        initial_structure.add_site_property("bulk_equivalent", sg.get_symmetry_dataset()["equivalent_atoms"].tolist())
+        initial_structure.add_site_property("bulk_wyckoff",
+                                            sg.get_symmetry_dataset()['wyckoffs'])
+        initial_structure.add_site_property("bulk_equivalent",
+                                            sg.get_symmetry_dataset()['equivalent_atoms'].tolist())
         latt = initial_structure.lattice
         miller_index = _reduce_vector(miller_index)
         # Calculate the surface normal using the reciprocal lattice vector.
@@ -845,7 +838,7 @@ class SlabGenerator:
 
         slab_scale_factor = []
         non_orth_ind = []
-        eye = np.eye(3, dtype=np.int_)
+        eye = np.eye(3, dtype=np.int)
         for i, j in enumerate(miller_index):
             if j == 0:
                 # Lattice vector is perpendicular to surface normal, i.e.,
@@ -878,11 +871,11 @@ class SlabGenerator:
 
             index_range = sorted(
                 reversed(range(-max_normal_search, max_normal_search + 1)),
-                key=lambda x: abs(x),
-            )
+                key=lambda x: abs(x))
             candidates = []
             for uvw in itertools.product(index_range, index_range, index_range):
-                if (not any(uvw)) or abs(np.linalg.det(slab_scale_factor + [uvw])) < 1e-8:
+                if (not any(uvw)) or abs(
+                        np.linalg.det(slab_scale_factor + [uvw])) < 1e-8:
                     continue
                 vec = latt.get_cartesian_coords(uvw)
                 l = np.linalg.norm(vec)
@@ -913,7 +906,8 @@ class SlabGenerator:
 
         # When getting the OUC, lets return the most reduced
         # structure as possible to reduce calculations
-        self.oriented_unit_cell = Structure.from_sites(single, to_unit_cell=True)
+        self.oriented_unit_cell = Structure.from_sites(single,
+                                                       to_unit_cell=True)
         self.max_normal_search = max_normal_search
         self.parent = initial_structure
         self.lll_reduce = lll_reduce
@@ -929,7 +923,17 @@ class SlabGenerator:
         self._proj_height = abs(np.dot(normal, c))
         self.reorient_lattice = reorient_lattice
 
-    def get_slab(self, shift=0, tol=0.1, energy=None):
+        h = self._proj_height
+        p = round(h / self.parent.lattice.d_hkl(self.miller_index), 8)
+        if self.in_unit_planes:
+            self.nlayers_slab = int(math.ceil(self.min_slab_size / p))
+            self.nlayers_vac = int(math.ceil(self.min_vac_size / p))
+        else:
+            self.nlayers_slab = int(math.ceil(self.min_slab_size / h))
+            self.nlayers_vac = int(math.ceil(self.min_vac_size / h))
+        self.nlayers = self.nlayers_slab + self.nlayers_vac
+
+    def get_slab(self, shift=0, tol=0.1):
         """
         This method takes in shift value for the c lattice direction and
         generates a slab based on the given shift. You should rarely use this
@@ -940,70 +944,27 @@ class SlabGenerator:
             shift (float): A shift value in Angstrom that determines how much a
                 slab should be shifted.
             tol (float): Tolerance to determine primitive cell.
-            energy (float): An energy to assign to the slab.
 
         Returns:
             (Slab) A Slab object with a particular shifted oriented unit cell.
         """
 
-        h = self._proj_height
-        p = round(h / self.parent.lattice.d_hkl(self.miller_index), 8)
-        if self.in_unit_planes:
-            nlayers_slab = int(math.ceil(self.min_slab_size / p))
-            nlayers_vac = int(math.ceil(self.min_vac_size / p))
-        else:
-            nlayers_slab = int(math.ceil(self.min_slab_size / h))
-            nlayers_vac = int(math.ceil(self.min_vac_size / h))
-        nlayers = nlayers_slab + nlayers_vac
-
         species = self.oriented_unit_cell.species_and_occu
         props = self.oriented_unit_cell.site_properties
-        props = {k: v * nlayers_slab for k, v in props.items()}
+        props = {k: v * self.nlayers_slab for k, v in props.items()}
         frac_coords = self.oriented_unit_cell.frac_coords
         frac_coords = np.array(frac_coords) + np.array([0, 0, -shift])[None, :]
         frac_coords -= np.floor(frac_coords)
         a, b, c = self.oriented_unit_cell.lattice.matrix
-        new_lattice = [a, b, nlayers * c]
-        frac_coords[:, 2] = frac_coords[:, 2] / nlayers
+        new_lattice = [a, b, self.nlayers * c]
+        frac_coords[:, 2] = frac_coords[:, 2] / self.nlayers
         all_coords = []
-        for i in range(nlayers_slab):
+        for i in range(self.nlayers_slab):
             fcoords = frac_coords.copy()
-            fcoords[:, 2] += i / nlayers
+            fcoords[:, 2] += i / self.nlayers
             all_coords.extend(fcoords)
 
-        slab = Structure(new_lattice, species * nlayers_slab, all_coords, site_properties=props)
-
-        scale_factor = self.slab_scale_factor
-        # Whether or not to orthogonalize the structure
-        if self.lll_reduce:
-            lll_slab = slab.copy(sanitize=True)
-            mapping = lll_slab.lattice.find_mapping(slab.lattice)
-            scale_factor = np.dot(mapping[2], scale_factor)
-            slab = lll_slab
-
-        # Whether or not to center the slab layer around the vacuum
-        if self.center_slab:
-            avg_c = np.average([c[2] for c in slab.frac_coords])
-            slab.translate_sites(list(range(len(slab))), [0, 0, 0.5 - avg_c])
-
-        if self.primitive:
-            prim = slab.get_primitive_structure(tolerance=tol)
-            if energy is not None:
-                energy = prim.volume / slab.volume * energy
-            slab = prim
-
-        return Slab(
-            slab.lattice,
-            slab.species_and_occu,
-            slab.frac_coords,
-            self.miller_index,
-            self.oriented_unit_cell,
-            shift,
-            scale_factor,
-            energy=energy,
-            site_properties=slab.site_properties,
-            reorient_lattice=self.reorient_lattice,
-        )
+        return Structure(new_lattice, species * self.nlayers_slab, all_coords, site_properties=props)
 
     def _calculate_possible_shifts(self, tol=0.1):
         frac_coords = self.oriented_unit_cell.frac_coords
@@ -1055,37 +1016,32 @@ class SlabGenerator:
         return shifts
 
     def _get_c_ranges(self, bonds):
-        c_ranges = []
-        bonds = {(get_el_sp(s1), get_el_sp(s2)): dist for (s1, s2), dist in bonds.items()}
+        c_ranges = set()
+        bonds = {(get_el_sp(s1), get_el_sp(s2)): dist for (s1, s2), dist in
+                 bonds.items()}
         for (sp1, sp2), bond_dist in bonds.items():
             for site in self.oriented_unit_cell:
                 if sp1 in site.species:
                     for nn in self.oriented_unit_cell.get_neighbors(site, bond_dist):
                         if sp2 in nn.species:
-                            c_range = tuple(sorted([site.frac_coords[2], nn.frac_coords[2]]))
+                            c_range = tuple(sorted([site.frac_coords[2],
+                                                    nn.frac_coords[2]]))
                             if c_range[1] > 1:
                                 # Takes care of PBC when c coordinate of site
                                 # goes beyond the upper boundary of the cell
-                                c_ranges.append((c_range[0], 1))
-                                c_ranges.append((0, c_range[1] - 1))
+                                c_ranges.add((c_range[0], 1))
+                                c_ranges.add((0, c_range[1] - 1))
                             elif c_range[0] < 0:
                                 # Takes care of PBC when c coordinate of site
                                 # is below the lower boundary of the unit cell
-                                c_ranges.append((0, c_range[1]))
-                                c_ranges.append((c_range[0] + 1, 1))
+                                c_ranges.add((0, c_range[1]))
+                                c_ranges.add((c_range[0] + 1, 1))
                             elif c_range[0] != c_range[1]:
-                                c_ranges.append((c_range[0], c_range[1]))
+                                c_ranges.add(c_range)
         return c_ranges
 
-    def get_slabs(
-        self,
-        bonds=None,
-        ftol=0.1,
-        tol=0.1,
-        max_broken_bonds=0,
-        symmetrize=False,
-        repair=False,
-    ):
+    def get_slabs(self, bonds=None, ftol=0.1, tol=0.1, max_broken_bonds=0,
+                  symmetrize=False, repair=False):
         """
         This method returns a list of slabs that are generated using the list of
         shift values from the method, _calculate_possible_shifts(). Before the
@@ -1118,7 +1074,7 @@ class SlabGenerator:
             ([Slab]) List of all possible terminations of a particular surface.
             Slabs are sorted by the # of bonds broken.
         """
-        c_ranges = [] if bonds is None else self._get_c_ranges(bonds)
+        c_ranges = set() if bonds is None else self._get_c_ranges(bonds)
 
         slabs = []
         for shift in self._calculate_possible_shifts(tol=ftol):
@@ -1126,7 +1082,8 @@ class SlabGenerator:
             for r in c_ranges:
                 if r[0] <= shift <= r[1]:
                     bonds_broken += 1
-            slab = self.get_slab(shift, tol=tol, energy=bonds_broken)
+            slab = self.get_slab(shift, tol=tol)
+            setattr(slab, 'energy', bonds_broken)
             if bonds_broken <= max_broken_bonds:
                 slabs.append(slab)
             elif repair:
@@ -1135,7 +1092,8 @@ class SlabGenerator:
                 slabs.append(self.repair_broken_bonds(slab, bonds))
 
         # Further filters out any surfaces made that might be the same
-        m = StructureMatcher(ltol=tol, stol=tol, primitive_cell=False, scale=False)
+        m = StructureMatcher(ltol=tol, stol=tol, scale=False,
+                             primitive_cell=False)
 
         new_slabs = []
         for g in m.group_structures(slabs):
@@ -1147,29 +1105,36 @@ class SlabGenerator:
             else:
                 new_slabs.append(g[0])
 
-        match = StructureMatcher(ltol=tol, stol=tol, primitive_cell=False, scale=False)
-        new_slabs = [g[0] for g in match.group_structures(new_slabs)]
+        new_slabs = [g[0] for g in m.group_structures(new_slabs)]
 
-        # Reorient the lattice to get the correct reduced cell
-        ouc = self.oriented_unit_cell.copy()
-        if self.primitive:
-            # find a reduced ouc
-            slab_l = new_slabs[0].lattice
-            ouc = ouc.get_primitive_structure(
-                constrain_latt={
-                    "a": slab_l.a,
-                    "b": slab_l.b,
-                    "alpha": slab_l.alpha,
-                    "beta": slab_l.beta,
-                    "gamma": slab_l.gamma,
-                }
-            )
-            # Check this is the correct oriented unit cell
-            ouc = self.oriented_unit_cell if slab_l.a != ouc.lattice.a or slab_l.b != ouc.lattice.b else ouc
-            for i, slab in enumerate(new_slabs):
-                new_slabs[i] = slab.oriented_unit_cell = ouc
+        processed_slabs = []
+        for slab in new_slabs:
+            energy = slab.energy
+            scale_factor = self.slab_scale_factor
+            # Whether or not to orthogonalize the structure
+            if self.lll_reduce:
+                lll_slab = slab.copy(sanitize=True)
+                mapping = lll_slab.lattice.find_mapping(slab.lattice)
+                scale_factor = np.dot(mapping[2], scale_factor)
+                slab = lll_slab
 
-        return sorted(new_slabs, key=lambda s: s.energy)
+            # Whether or not to center the slab layer around the vacuum
+            if self.center_slab:
+                avg_c = np.average([c[2] for c in slab.frac_coords])
+                slab.translate_sites(list(range(len(slab))), [0, 0, 0.5 - avg_c])
+
+            if self.primitive:
+                prim = slab.get_primitive_structure(tolerance=tol)
+                energy = prim.volume / slab.volume * energy
+                slab = prim
+
+            slab = Slab(slab.lattice, slab.species_and_occu, slab.frac_coords,
+                        self.miller_index, self.oriented_unit_cell, shift,
+                        self.slab_scale_factor, site_properties=slab.site_properties,
+                        reorient_lattice=self.reorient_lattice, energy=energy)
+            processed_slabs.append(slab)
+
+        return sorted(processed_slabs, key=lambda s: s.energy)
 
     def repair_broken_bonds(self, slab, bonds):
         """
@@ -1204,7 +1169,8 @@ class SlabGenerator:
                     poly_coord = 0
                     if site.species_string == el:
 
-                        for nn in self.oriented_unit_cell.get_neighbors(site, blength):
+                        for nn in self.oriented_unit_cell.get_neighbors(
+                                site, blength):
                             if nn[0].species_string == pair[i - 1]:
                                 poly_coord += 1
                     cnlist.append(poly_coord)
@@ -1231,8 +1197,10 @@ class SlabGenerator:
 
                         # find its NNs with the corresponding
                         # species it should be coordinated with
-                        neighbors = slab.get_neighbors(slab[i], blength, include_index=True)
-                        tomove = [nn[2] for nn in neighbors if nn[0].species_string == element2]
+                        neighbors = slab.get_neighbors(slab[i], blength,
+                                                       include_index=True)
+                        tomove = [nn[2] for nn in neighbors if
+                                  nn[0].species_string == element2]
                         tomove.append(i)
                         # and then move those NNs along with the central
                         # atom back to the other side of the slab again
@@ -1270,23 +1238,19 @@ class SlabGenerator:
         slab_ratio = nlayers_slab / nlayers
 
         # Sort the index of sites based on which side they are on
-        top_site_index = [i for i in index_of_sites if slab[i].frac_coords[2] > slab.center_of_mass[2]]
-        bottom_site_index = [i for i in index_of_sites if slab[i].frac_coords[2] < slab.center_of_mass[2]]
+        top_site_index = [i for i in index_of_sites if
+                          slab[i].frac_coords[2] > slab.center_of_mass[2]]
+        bottom_site_index = [i for i in index_of_sites if
+                             slab[i].frac_coords[2] < slab.center_of_mass[2]]
 
         # Translate sites to the opposite surfaces
         slab.translate_sites(top_site_index, [0, 0, slab_ratio])
         slab.translate_sites(bottom_site_index, [0, 0, -slab_ratio])
 
-        return Slab(
-            init_slab.lattice,
-            slab.species,
-            slab.frac_coords,
-            init_slab.miller_index,
-            init_slab.oriented_unit_cell,
-            init_slab.shift,
-            init_slab.scale_factor,
-            energy=init_slab.energy,
-        )
+        return Slab(init_slab.lattice, slab.species, slab.frac_coords,
+                    init_slab.miller_index, init_slab.oriented_unit_cell,
+                    init_slab.shift, init_slab.scale_factor,
+                    energy=init_slab.energy)
 
     def nonstoichiometric_symmetrized_slab(self, init_slab):
 
@@ -1336,7 +1300,8 @@ class SlabGenerator:
                     nonstoich_slabs.append(slab)
 
         if len(slab) <= len(self.parent):
-            warnings.warn("Too many sites removed, please use a larger slab size.")
+            warnings.warn("Too many sites removed, please use a larger slab "
+                          "size.")
 
         return nonstoich_slabs
 
