@@ -169,8 +169,6 @@ class Slab(Structure):
             site_properties=site_properties,
         )
         
-        self.sg = SpacegroupAnalyzer(self)
-
     def get_orthogonal_c_slab(self):
         """
         This method returns a Slab where the normal (c lattice vector) is
@@ -629,7 +627,7 @@ class Slab(Structure):
                 parameter point, but on the other side of the slab
         """
 
-        ops = self.sg.get_symmetry_operations(cartesian=cartesian)
+        ops = SpacegroupAnalyzer self.sg.get_symmetry_operations(cartesian=cartesian)
 
         # Each operation on a point will return an equivalent point.
         # We want to find the point on the other side of the slab.
@@ -691,35 +689,23 @@ class Slab(Structure):
         """
 
         slabcopy = self.sg.get_symmetrized_structure()
-        points = [slabcopy[i].frac_coords for i in indices]
         removal_list = []
 
-        for pt in points:
-            # Get the index of the original site on top
-            cart_point = slabcopy.lattice.get_cartesian_coords(pt)
-            dist = [site.distance_from_point(cart_point) for site in slabcopy]
-            site1 = dist.index(min(dist))
-
+        for i1 in indices:
             # Get the index of the corresponding site at the bottom
-            for i, eq_sites in enumerate(slabcopy.equivalent_sites):
-                if slabcopy[site1] in eq_sites:
-                    eq_indices = slabcopy.equivalent_indices[i]
-                    break
-            i1 = eq_indices[eq_sites.index(slabcopy[site1])]
+            eq_indices = [eq_indices for eq_indices in slabcopy.equivalent_indices 
+                          if i1 in eq_indices][0]
 
             for i2 in eq_indices:
-                if i2 == i1:
+                if i2 == i1 or i2 in removal_list:
                     continue
                 if slabcopy[i2].frac_coords[2] == slabcopy[i1].frac_coords[2]:
                     continue
                 # Test site remove to see if it results in symmetric slab
-                s = self.copy()
-                s.remove_sites([i1, i2])
-                if s.is_symmetric():
-                    removal_list.extend([i1, i2])
-                    break
+                removal_list.extend([i1, i2])
+                break
 
-        # If expected, 2 atoms are removed per index
+        # Check if we have double the number of input indices to remove 
         if len(removal_list) == 2 * len(indices):
             self.remove_sites(removal_list)
         else:
