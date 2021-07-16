@@ -145,6 +145,7 @@ class Slab(Structure):
         self.scale_factor = np.array(scale_factor)
         self.energy = energy
         self.reorient_lattice = reorient_lattice
+        
         if self.reorient_lattice:
             if coords_are_cartesian:
                 coords = lattice.get_fractional_coords(coords)
@@ -167,6 +168,8 @@ class Slab(Structure):
             coords_are_cartesian=coords_are_cartesian,
             site_properties=site_properties,
         )
+        
+        self.sg = SpacegroupAnalyzer(self)
 
     def get_orthogonal_c_slab(self):
         """
@@ -626,8 +629,7 @@ class Slab(Structure):
                 parameter point, but on the other side of the slab
         """
 
-        sg = SpacegroupAnalyzer(self)
-        ops = sg.get_symmetry_operations(cartesian=cartesian)
+        ops = self.sg.get_symmetry_operations(cartesian=cartesian)
 
         # Each operation on a point will return an equivalent point.
         # We want to find the point on the other side of the slab.
@@ -688,7 +690,7 @@ class Slab(Structure):
                 in the slab to remove.
         """
 
-        slabcopy = SpacegroupAnalyzer(self.copy()).get_symmetrized_structure()
+        slabcopy = self.sg.get_symmetrized_structure()
         points = [slabcopy[i].frac_coords for i in indices]
         removal_list = []
 
