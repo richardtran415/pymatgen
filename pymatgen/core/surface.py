@@ -651,7 +651,7 @@ class Slab(Structure):
 
         return site2
 
-    def symmetrically_add_atom(self, specie, point, coords_are_cartesian=False):
+    def symmetrically_add_atom(self, specie, point, coords_are_cartesian=False, properties=None):
         """
         Class method for adding a site at a specified point in a slab.
             Will add the corresponding site on the other side of the
@@ -672,8 +672,10 @@ class Slab(Structure):
         # Get the index of the corresponding site at the bottom
         point2 = self.get_symmetric_site(point, cartesian=coords_are_cartesian)
 
-        self.append(specie, point, coords_are_cartesian=coords_are_cartesian)
-        self.append(specie, point2, coords_are_cartesian=coords_are_cartesian)
+        self.append(specie, point, coords_are_cartesian=coords_are_cartesian, 
+                    properties=properties)
+        self.append(specie, point2, coords_are_cartesian=coords_are_cartesian, 
+                    properties=properties)
 
     def symmetrically_remove_atoms(self, indices):
         """
