@@ -627,7 +627,7 @@ class Slab(Structure):
                 parameter point, but on the other side of the slab
         """
 
-        ops = SpacegroupAnalyzer self.sg.get_symmetry_operations(cartesian=cartesian)
+        ops = SpacegroupAnalyzer(self).get_symmetry_operations(cartesian=cartesian)
 
         # Each operation on a point will return an equivalent point.
         # We want to find the point on the other side of the slab.
@@ -688,7 +688,7 @@ class Slab(Structure):
                 in the slab to remove.
         """
 
-        slabcopy = self.sg.get_symmetrized_structure()
+        slabcopy = SpacegroupAnalyzer(self).get_symmetrized_structure()
         removal_list = []
 
         for i1 in indices:
