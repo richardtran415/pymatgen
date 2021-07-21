@@ -631,6 +631,7 @@ class Slab(Structure):
 
         # Each operation on a point will return an equivalent point.
         # We want to find the point on the other side of the slab.
+        found_site = False
         for op in ops:
             slab = self.copy()
             site2 = op.operate(point)
@@ -641,18 +642,18 @@ class Slab(Structure):
             slab.append("O", point, coords_are_cartesian=cartesian)
             slab.append("O", site2, coords_are_cartesian=cartesian)
             try:
-                sg = SpacegroupAnalyzer(slab)
-                if sg.is_laue():
+                if slab.is_symmetric():
+                    found_site = True
                     break
             except TypeError:
                 # if it breaks the code, obviously its not gonna be symmetric
                 pass
-            # If not symmetric, remove the two added
-            # sites and try another symmetry operator
-            slab.remove_sites([len(slab) - 1])
-            slab.remove_sites([len(slab) - 1])
-            
-        return site2
+        
+        if found_site:
+            return site2
+        else:
+            warnings.warn('Cannot add symmetric site!')
+            return None
 
     def symmetrically_add_atom(self, specie, point, coords_are_cartesian=False, properties=None):
         """
@@ -674,11 +675,11 @@ class Slab(Structure):
 
         # Get the index of the corresponding site at the bottom
         point2 = self.get_symmetric_site(point, cartesian=coords_are_cartesian)
-
-        self.append(specie, point, coords_are_cartesian=coords_are_cartesian, 
-                    properties=properties)
-        self.append(specie, point2, coords_are_cartesian=coords_are_cartesian, 
-                    properties=properties)
+        if np.all(point2):
+            self.append(specie, point, coords_are_cartesian=coords_are_cartesian, 
+                        properties=properties)
+            self.append(specie, point2, coords_are_cartesian=coords_are_cartesian, 
+                        properties=properties)
 
     def symmetrically_remove_atoms(self, indices):
         """
@@ -766,7 +767,7 @@ class SlabGenerator:
         min_slab_size,
         min_vacuum_size,
         lll_reduce=False,
-        center_slab=False,
+        center_slab=True,
         in_unit_planes=False,
         primitive=True,
         max_normal_search=None,
@@ -1735,7 +1736,7 @@ def generate_all_slabs(
     ftol=0.1,
     max_broken_bonds=0,
     lll_reduce=False,
-    center_slab=False,
+    center_slab=True,
     primitive=True,
     max_normal_search=None,
     symmetrize=False,
