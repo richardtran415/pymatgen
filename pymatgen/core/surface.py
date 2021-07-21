@@ -640,15 +640,18 @@ class Slab(Structure):
             # Add dummy site to check the overall structure is symmetric
             slab.append("O", point, coords_are_cartesian=cartesian)
             slab.append("O", site2, coords_are_cartesian=cartesian)
-            sg = SpacegroupAnalyzer(slab)
-            if sg.is_laue():
-                break
-
-            # If not symmetric, remove the two added
-            # sites and try another symmetry operator
-            slab.remove_sites([len(slab) - 1])
-            slab.remove_sites([len(slab) - 1])
-
+                try:
+                    sg = SpacegroupAnalyzer(slab)
+                    if sg.is_laue():
+                        break
+                except TypeError:
+                    # if it breaks the code, obviously its not gonna be symmetric
+                    pass
+                # If not symmetric, remove the two added
+                # sites and try another symmetry operator
+                slab.remove_sites([len(slab) - 1])
+                slab.remove_sites([len(slab) - 1])
+            
         return site2
 
     def symmetrically_add_atom(self, specie, point, coords_are_cartesian=False, properties=None):
